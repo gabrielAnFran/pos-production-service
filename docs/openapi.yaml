@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: Production Service API
+  description: Execution/repair queue for the mechanic-shop POS system.
+  version: 0.1.0
+servers:
+  - url: http://localhost:8083/api/v1
+paths:
+  /executions/{os_id}:
+    get:
+      summary: Get the execution record for an OS (ordem de serviço)
+      parameters:
+        - name: os_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Execution found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Execution"
+        "404":
+          description: No execution found for the given os_id
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    patch:
+      summary: Transition the execution's status
+      parameters:
+        - name: os_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusRequest"
+      responses:
+        "200":
+          description: Updated execution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Execution"
+        "400":
+          description: Invalid request body or invalid status transition
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No execution found for the given os_id
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /healthz:
+    get:
+      summary: Liveness probe
+      responses:
+        "200":
+          description: OK
+  /readyz:
+    get:
+      summary: Readiness probe (pings Mongo)
+      responses:
+        "200":
+          description: Ready
+        "503":
+          description: Not ready
+
+components:
+  schemas:
+    ExecutionStatus:
+      type: string
+      enum: [DIAGNOSING, REPAIRING, COMPLETED, FAILED]
+    Execution:
+      type: object
+      properties:
+        id:
+          type: string
+        os_id:
+          type: string
+        budget_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/ExecutionStatus"
+        technician_id:
+          type: string
+        notes:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    UpdateStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/ExecutionStatus"
+        notes:
+          type: string
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

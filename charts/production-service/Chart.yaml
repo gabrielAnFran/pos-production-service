@@ -1,0 +1,6 @@
+apiVersion: v2
+name: production-service
+description: Production Service (execution/repair queue) for the mechanic-shop POS
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

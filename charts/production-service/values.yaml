@@ -1,0 +1,46 @@
+image:
+  repository: pos-production-service
+  tag: latest
+  pullPolicy: IfNotPresent
+
+server:
+  replicaCount: 1
+  port: 8083
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+worker:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+
+config:
+  productionPort: "8083"
+  productionMongoUri: "mongodb://production-mongo:27017/production?replicaSet=rs0"
+  productionAmqpUrl: "amqp://guest:guest@rabbitmq:5672/"
+  productionDispatchIntervalMs: "500"
+
+secret:
+  # values here are placeholders; override via --set or a sealed secret in real deployments
+  mongoUri: ""
+  amqpUrl: ""
+
+service:
+  type: ClusterIP
+  port: 8083

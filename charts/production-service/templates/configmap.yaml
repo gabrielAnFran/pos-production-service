@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "production-service.fullname" . }}-config
+  labels:
+    {{- include "production-service.labels" . | nindent 4 }}
+data:
+  PRODUCTION_PORT: {{ .Values.config.productionPort | quote }}
+  PRODUCTION_MONGO_URI: {{ .Values.config.productionMongoUri | quote }}
+  PRODUCTION_DISPATCH_INTERVAL_MS: {{ .Values.config.productionDispatchIntervalMs | quote }}
