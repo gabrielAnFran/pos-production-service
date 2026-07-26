@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 
 	"github.com/gabrielAnFran/pos-production-service/internal/application/usecases"
 	"github.com/gabrielAnFran/pos-production-service/internal/domain/entities"
@@ -24,16 +23,7 @@ func TestStartExecution_EndToEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	mongoC, err := mongodb.Run(ctx, "mongo:7", mongodb.WithReplicaSet("rs0"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = mongoC.Terminate(ctx) })
-
-	uri, err := mongoC.ConnectionString(ctx)
-	require.NoError(t, err)
-
-	client, database, err := db.Connect(ctx, uri+"?replicaSet=rs0")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
+	client, database := setupMongo(t)
 
 	repo := db.NewExecutionRepositoryMongo(client, database)
 	uc := usecases.NewStartExecutionUseCase(repo)

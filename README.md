@@ -67,14 +67,25 @@ go run ./cmd/worker
 ## Testing
 
 - Unit tests (no external services needed): `go test ./...`.
-- Integration test (real, single-node-replica-set Mongo via
-  testcontainers-go): `make test-integration` (build tag `integration`).
-  Not run in CI (see `.github/workflows/ci.yml` for why); run it locally or
-  against the docker-compose stack.
-- Coverage at last run: ~22.5% total statements (`go tool cover -func`).
-  Concentrated in domain/entities (100%) and use cases (78.3%); the Mongo
-  repository and AMQP transport are covered by the integration test rather
-  than unit tests, per the challenge's testing guidance.
+- Integration tests (real Mongo single-node replica set + real RabbitMQ via
+  testcontainers-go, requires Docker): `make test-integration` (build tag
+  `integration`). Also runs in CI as part of the `test` job -- both suites
+  provision their own containers, so no `services:` block or manually
+  started Mongo/RabbitMQ is needed.
+- Coverage at last run (`go test -tags=integration ./... -coverpkg=./...`,
+  merged across unit + integration): **67.4%** total statements. Note that
+  plain `go test ./... -coverprofile=...` (without `-coverpkg=./...`)
+  under-reports this, since `db` and `messaging` are exercised only by the
+  external `tests/integration` package.
+  - `internal/domain/entities`, `internal/infrastructure/config`,
+    `internal/presentation/dto`, `internal/presentation/middleware`: 100%
+  - `internal/presentation/handlers`: 97.6%
+  - `internal/infrastructure/db`: 81.8% (Mongo repository, transactional
+    outbox writes, all status transitions, idempotency)
+  - `internal/application/usecases`: 78.3%
+  - `internal/infrastructure/messaging`: 68.6% (publish/consume roundtrip,
+    retry -> DLQ after `MaxRetries`, outbox dispatcher)
+  - `cmd/server`, `cmd/worker`: 0% (main() wiring only, not unit tested)
 
 ## Saga participation
 

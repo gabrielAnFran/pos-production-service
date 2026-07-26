@@ -158,6 +158,8 @@ github.com/testcontainers/testcontainers-go v0.43.0 h1:oEQx5MW2DGd9z3AeEQfB2lPM0
 github.com/testcontainers/testcontainers-go v0.43.0/go.mod h1:+VxkT2NQnKOZPKi6praMuMKYHYyOGXr0XSBSlSMCzFo=
 github.com/testcontainers/testcontainers-go/modules/mongodb v0.43.0 h1:RJlAAz8dv61icyHvFmrr1xZHJEWZdvBfVBAU6wnmGPM=
 github.com/testcontainers/testcontainers-go/modules/mongodb v0.43.0/go.mod h1:1zaDEZyV1SK+mpz83tmB2KthF6DHaS4Y+lRvy3d2XiE=
+github.com/testcontainers/testcontainers-go/modules/rabbitmq v0.43.0 h1:+4P4pktUqT8nliEQ2ukrjA+t5j36PLGugoXm9zWMYgM=
+github.com/testcontainers/testcontainers-go/modules/rabbitmq v0.43.0/go.mod h1:Q4SHA2NVopiqTDR5PGoapozEzWalEgpJOrtNSOG2RUM=
 github.com/tklauser/go-sysconf v0.3.16 h1:frioLaCQSsF5Cy1jgRBrzr6t502KIIwQ0MArYICU0nA=
 github.com/tklauser/go-sysconf v0.3.16/go.mod h1:/qNL9xxDhc7tx3HSRsLWNnuzbVfh3e7gh/BmM179nYI=
 github.com/tklauser/numcpus v0.11.0 h1:nSTwhKH5e1dMNsCdVBukSZrURJRoHbSEQjdEbY+9RXw=
