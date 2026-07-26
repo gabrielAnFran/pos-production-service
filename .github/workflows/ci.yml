@@ -23,6 +23,10 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
 
   test:
     runs-on: ubuntu-latest
@@ -36,29 +40,36 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      mongo:
-        image: mongo:7
-        ports:
-          - 27017:27017
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
       # NOTE: GH Actions `services:` containers can't take a custom command
-      # (e.g. `--replSet rs0`) at container-create time, so this mongo
-      # service starts as a plain standalone. We initiate it as a
-      # single-node replica set here so `go test ./...` (which touches
-      # execution_repository_mongo.go's session.WithTransaction calls
-      # indirectly through any code path that dials Mongo) has a working
-      # target. The dedicated testcontainers-based integration suite
-      # (`make test-integration`, build tag `integration`) is NOT run in CI
-      # -- it provisions its own single-node replica-set container via the
-      # testcontainers mongodb module and is intended to run locally / via
-      # docker-compose, documented in README.md.
+      # (e.g. `--replSet rs0`) at container-create time, so Mongo can't be
+      # declared there -- it's started manually here instead, with
+      # replication enabled from boot, then initiated as a single-node
+      # replica set (required for execution_repository_mongo.go's
+      # session.WithTransaction calls). The dedicated testcontainers-based
+      # integration suite (`make test-integration`, build tag `integration`)
+      # is NOT run in CI -- it provisions its own single-node replica-set
+      # container via the testcontainers mongodb module and is intended to
+      # run locally / via docker-compose, documented in README.md.
+      - name: Start mongo with replication enabled
+        run: |
+          docker run -d --name mongo --network host mongo:7 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            docker exec mongo mongosh --quiet --eval 'db.adminCommand("ping")' && break
+            sleep 2
+          done
       - name: Initiate mongo replica set
         run: |
-          docker run --rm --network host mongo:7 mongosh --host localhost:27017 --eval 'rs.initiate()'
+          docker exec mongo mongosh --eval 'rs.initiate()'
+          for i in $(seq 1 30); do
+            state=$(docker exec mongo mongosh --quiet --eval 'rs.status().myState' 2>/dev/null || true)
+            [ "$state" = "1" ] && break
+            sleep 2
+          done
       - name: go test
         run: go test ./... -coverprofile=coverage.out
       - name: coverage summary
