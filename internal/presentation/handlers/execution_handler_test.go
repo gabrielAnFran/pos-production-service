@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -21,7 +22,9 @@ import (
 // fakeRepo is a minimal in-memory repositories.ExecutionRepository for
 // handler-level HTTP tests.
 type fakeRepo struct {
-	byOSID map[string]*entities.Execution
+	byOSID       map[string]*entities.Execution
+	forceFindErr error
+	forceUpdErr  error
 }
 
 func newFakeRepo() *fakeRepo {
@@ -34,6 +37,9 @@ func (f *fakeRepo) Create(_ context.Context, exec *entities.Execution, _ *reposi
 }
 
 func (f *fakeRepo) UpdateStatus(_ context.Context, osID string, next entities.ExecutionStatus, notes string, _ *repositories.OutboxDoc) (*entities.Execution, error) {
+	if f.forceUpdErr != nil {
+		return nil, f.forceUpdErr
+	}
 	exec, ok := f.byOSID[osID]
 	if !ok {
 		return nil, repositories.ErrNotFound
@@ -46,6 +52,9 @@ func (f *fakeRepo) UpdateStatus(_ context.Context, osID string, next entities.Ex
 }
 
 func (f *fakeRepo) FindByOSID(_ context.Context, osID string) (*entities.Execution, error) {
+	if f.forceFindErr != nil {
+		return nil, f.forceFindErr
+	}
 	exec, ok := f.byOSID[osID]
 	if !ok {
 		return nil, repositories.ErrNotFound
@@ -151,4 +160,83 @@ func TestUpdateStatus_BadBody(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGet_InternalError(t *testing.T) {
+	repo := newFakeRepo()
+	repo.forceFindErr = errors.New("boom")
+	r := newTestRouter(repo)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/executions/os-1", nil)
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestUpdateStatus_InternalError(t *testing.T) {
+	repo := newFakeRepo()
+	now := time.Now().UTC()
+	repo.byOSID["os-1"] = &entities.Execution{ID: "e1", OSID: "os-1", Status: entities.StatusDiagnosing, CreatedAt: now, UpdatedAt: now}
+	repo.forceUpdErr = errors.New("boom")
+	r := newTestRouter(repo)
+
+	body, _ := json.Marshal(map[string]string{"status": "REPAIRING"})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/executions/os-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestUpdateStatus_RepairingToCompleted(t *testing.T) {
+	repo := newFakeRepo()
+	now := time.Now().UTC()
+	repo.byOSID["os-1"] = &entities.Execution{ID: "e1", OSID: "os-1", Status: entities.StatusRepairing, CreatedAt: now, UpdatedAt: now}
+	r := newTestRouter(repo)
+
+	body, _ := json.Marshal(map[string]string{"status": "COMPLETED"})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/executions/os-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body2 map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body2))
+	assert.Equal(t, "COMPLETED", body2["status"])
+}
+
+func TestUpdateStatus_RepairingToFailed(t *testing.T) {
+	repo := newFakeRepo()
+	now := time.Now().UTC()
+	repo.byOSID["os-1"] = &entities.Execution{ID: "e1", OSID: "os-1", Status: entities.StatusRepairing, CreatedAt: now, UpdatedAt: now}
+	r := newTestRouter(repo)
+
+	body, _ := json.Marshal(map[string]string{"status": "FAILED", "notes": "part unavailable"})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/executions/os-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body2 map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body2))
+	assert.Equal(t, "FAILED", body2["status"])
+}
+
+func TestUpdateStatus_DiagnosingToFailed(t *testing.T) {
+	repo := newFakeRepo()
+	now := time.Now().UTC()
+	repo.byOSID["os-1"] = &entities.Execution{ID: "e1", OSID: "os-1", Status: entities.StatusDiagnosing, CreatedAt: now, UpdatedAt: now}
+	r := newTestRouter(repo)
+
+	body, _ := json.Marshal(map[string]string{"status": "FAILED"})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/executions/os-1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }

@@ -30,48 +30,24 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    services:
-      rabbitmq:
-        image: rabbitmq:3-management
-        ports:
-          - 5672:5672
-        options: >-
-          --health-cmd "rabbitmq-diagnostics -q ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-      # NOTE: GH Actions `services:` containers can't take a custom command
-      # (e.g. `--replSet rs0`) at container-create time, so Mongo can't be
-      # declared there -- it's started manually here instead, with
-      # replication enabled from boot, then initiated as a single-node
-      # replica set (required for execution_repository_mongo.go's
-      # session.WithTransaction calls). The dedicated testcontainers-based
-      # integration suite (`make test-integration`, build tag `integration`)
-      # is NOT run in CI -- it provisions its own single-node replica-set
-      # container via the testcontainers mongodb module and is intended to
-      # run locally / via docker-compose, documented in README.md.
-      - name: Start mongo with replication enabled
-        run: |
-          docker run -d --name mongo --network host mongo:7 --replSet rs0 --bind_ip_all
-          for i in $(seq 1 30); do
-            docker exec mongo mongosh --quiet --eval 'db.adminCommand("ping")' && break
-            sleep 2
-          done
-      - name: Initiate mongo replica set
-        run: |
-          docker exec mongo mongosh --eval 'rs.initiate()'
-          for i in $(seq 1 30); do
-            state=$(docker exec mongo mongosh --quiet --eval 'rs.status().myState' 2>/dev/null || true)
-            [ "$state" = "1" ] && break
-            sleep 2
-          done
-      - name: go test
-        run: go test ./... -coverprofile=coverage.out
+      # The testcontainers-based integration suite (build tag `integration`)
+      # provisions its own single-node replica-set Mongo and its own
+      # RabbitMQ container via Docker (available on ubuntu-latest runners),
+      # so no `services:` block or manually-managed containers are needed
+      # here -- unit and integration tests run together for one honest
+      # coverage number. One retry/DLQ test deliberately runs for several
+      # minutes to exercise the real retry-queue TTL.
+      # -coverpkg=./... is required for an honest total: db and messaging
+      # are exercised only by the external tests/integration package, so
+      # without it their coverage is under-reported as 0%.
+      - name: go test (unit + integration)
+        run: go test -tags=integration ./... -coverpkg=./... -coverprofile=coverage.out
       - name: coverage summary
         run: go tool cover -func=coverage.out | tail -1
 
