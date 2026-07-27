@@ -1,14 +1,14 @@
 openapi: 3.0.3
 info:
   title: Production Service API
-  description: Execution/repair queue for the mechanic-shop POS system.
+  description: Fila de execução/reparo do sistema de PDV para oficina mecânica.
   version: 0.1.0
 servers:
   - url: http://localhost:8083/api/v1
 paths:
   /executions/{os_id}:
     get:
-      summary: Get the execution record for an OS (ordem de serviço)
+      summary: Obtém o registro de execução de uma OS (ordem de serviço)
       parameters:
         - name: os_id
           in: path
@@ -17,19 +17,19 @@ paths:
             type: string
       responses:
         "200":
-          description: Execution found
+          description: Execução encontrada
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Execution"
         "404":
-          description: No execution found for the given os_id
+          description: Nenhuma execução encontrada para o os_id informado
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
     patch:
-      summary: Transition the execution's status
+      summary: Transiciona o status da execução
       parameters:
         - name: os_id
           in: path
@@ -44,19 +44,19 @@ paths:
               $ref: "#/components/schemas/UpdateStatusRequest"
       responses:
         "200":
-          description: Updated execution
+          description: Execução atualizada
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Execution"
         "400":
-          description: Invalid request body or invalid status transition
+          description: Corpo da requisição inválido ou transição de status inválida
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
         "404":
-          description: No execution found for the given os_id
+          description: Nenhuma execução encontrada para o os_id informado
           content:
             application/problem+json:
               schema:
@@ -69,12 +69,12 @@ paths:
           description: OK
   /readyz:
     get:
-      summary: Readiness probe (pings Mongo)
+      summary: Readiness probe (verifica conexão com o Mongo)
       responses:
         "200":
-          description: Ready
+          description: Pronto
         "503":
-          description: Not ready
+          description: Não pronto
 
 components:
   schemas:

@@ -1,52 +1,53 @@
 # Production Service
 
-Execution/repair queue microservice for the mechanic-shop POS system. Owns
-the lifecycle of an OS's physical execution (diagnosing -> repairing ->
-completed/failed) once a saga has authorized work to start.
+Microsserviço de fila de execução/reparo do sistema de PDV para oficina
+mecânica. É responsável pelo ciclo de vida da execução física de uma OS
+(diagnosticando -> reparando -> concluída/falhou) a partir do momento em que
+uma saga autoriza o início do trabalho.
 
-## Why MongoDB
+## Por que MongoDB
 
-This is the one NoSQL service in the split, satisfying the project's NoSQL
-requirement. An execution record (status, technician, notes, timestamps) plus
-its append-only repair history is naturally document-shaped and doesn't need
-relational joins, so MongoDB with collection-per-concern
-(`execution_queue`, `repair_history`, `outbox`, `processed_events`) is a
-reasonable fit.
+Este é o único serviço NoSQL da divisão, atendendo ao requisito de NoSQL do
+projeto. Um registro de execução (status, técnico, notas, timestamps) e seu
+histórico de reparos append-only têm um formato naturalmente orientado a
+documentos e não precisam de joins relacionais, então o MongoDB com uma
+coleção por responsabilidade (`execution_queue`, `repair_history`, `outbox`,
+`processed_events`) é uma escolha razoável.
 
-## Architecture
+## Arquitetura
 
-- **cmd/server**: Gin HTTP API (`GET/PATCH /api/v1/executions/:os_id`,
+- **cmd/server**: API HTTP em Gin (`GET/PATCH /api/v1/executions/:os_id`,
   `/healthz`, `/readyz`).
-- **cmd/worker**: consumes `StartExecutionCommand` from RabbitMQ and runs the
-  outbox dispatcher goroutine in the same process.
-- **Outbox pattern with polling** (not change streams): domain writes and
-  the corresponding outbox event are written in a single MongoDB
-  multi-document transaction (`session.WithTransaction`), then a dispatcher
-  goroutine polls the `outbox` collection every
-  `PRODUCTION_DISPATCH_INTERVAL_MS` (default 500ms) for unpublished rows,
-  publishes them to RabbitMQ, and marks them published. This avoids the
-  added operational complexity of change streams while still getting
-  at-least-once, transactionally-consistent event publication.
+- **cmd/worker**: consome `StartExecutionCommand` do RabbitMQ e roda a
+  goroutine do dispatcher da outbox no mesmo processo.
+- **Padrão outbox com polling** (e não change streams): as escritas de
+  domínio e o evento de outbox correspondente são gravados em uma única
+  transação multi-documento do MongoDB (`session.WithTransaction`), e então
+  uma goroutine dispatcher faz polling da coleção `outbox` a cada
+  `PRODUCTION_DISPATCH_INTERVAL_MS` (padrão 500ms) em busca de linhas ainda
+  não publicadas, publica no RabbitMQ e as marca como publicadas. Isso evita
+  a complexidade operacional extra de change streams, mantendo publicação de
+  eventos com garantia at-least-once e consistência transacional.
 
-## Single-node replica set requirement
+## Requisito de replica set single-node
 
-MongoDB only supports multi-document transactions against a replica set
-(even a single-node one). `PRODUCTION_MONGO_URI` must point at a Mongo
-reachable as a replica set (e.g. `mongod --replSet rs0` plus one
-`rs.initiate()` call on first boot). This is expected to be handled by
-`pos-saga-orchestrator/deploy/local/docker-compose.yml`; this repo does not
-own that compose file.
+O MongoDB só suporta transações multi-documento contra um replica set
+(mesmo que seja de um único nó). `PRODUCTION_MONGO_URI` precisa apontar para
+um Mongo acessível como replica set (por exemplo, `mongod --replSet rs0`
+mais uma chamada de `rs.initiate()` no primeiro boot). Isso é esperado ser
+tratado por `pos-saga-orchestrator/deploy/local/docker-compose.yml`; este
+repositório não é dono desse arquivo compose.
 
-## Running locally
+## Rodando localmente
 
-As part of the full stack:
+Como parte da stack completa:
 
 ```
-# from pos-saga-orchestrator/deploy/local/
+# a partir de pos-saga-orchestrator/deploy/local/
 docker-compose up
 ```
 
-Standalone (requires a reachable replica-set Mongo and RabbitMQ):
+Standalone (requer um Mongo replica-set acessível e RabbitMQ):
 
 ```
 export PRODUCTION_MONGO_URI="mongodb://localhost:27017/production?replicaSet=rs0"
@@ -55,52 +56,54 @@ go run ./cmd/server &
 go run ./cmd/worker
 ```
 
-## Environment variables
+## Variáveis de ambiente
 
-| Variable                          | Default                                                              |
+| Variável                          | Padrão                                                                |
 |------------------------------------|-----------------------------------------------------------------------|
 | `PRODUCTION_PORT`                  | `8083`                                                                |
 | `PRODUCTION_MONGO_URI`             | `mongodb://production-mongo:27017/production?replicaSet=rs0`         |
 | `PRODUCTION_AMQP_URL`              | `amqp://guest:guest@localhost:5672/`                                 |
 | `PRODUCTION_DISPATCH_INTERVAL_MS`  | `500`                                                                 |
 
-## Testing
+## Testes
 
-- Unit tests (no external services needed): `go test ./...`.
-- Integration tests (real Mongo single-node replica set + real RabbitMQ via
-  testcontainers-go, requires Docker): `make test-integration` (build tag
-  `integration`). Also runs in CI as part of the `test` job -- both suites
-  provision their own containers, so no `services:` block or manually
-  started Mongo/RabbitMQ is needed.
-- Coverage at last run (`go test -tags=integration ./... -coverpkg=./...`,
-  merged across unit + integration): **67.4%** total statements. Note that
-  plain `go test ./... -coverprofile=...` (without `-coverpkg=./...`)
-  under-reports this, since `db` and `messaging` are exercised only by the
-  external `tests/integration` package.
+- Testes unitários (sem necessidade de serviços externos): `go test ./...`.
+- Testes de integração (Mongo replica-set single-node real + RabbitMQ real
+  via testcontainers-go, requer Docker): `make test-integration` (build tag
+  `integration`). Também roda no CI como parte do job `test` -- ambas as
+  suítes provisionam seus próprios containers, então nenhum bloco
+  `services:` ou Mongo/RabbitMQ iniciado manualmente é necessário.
+- Cobertura na última execução (`go test -tags=integration ./... -coverpkg=./...`,
+  combinando unitários + integração): **67,4%** do total de statements.
+  Note que `go test ./... -coverprofile=...` simples (sem `-coverpkg=./...`)
+  subestima esse número, já que `db` e `messaging` só são exercitados pelo
+  pacote externo `tests/integration`.
   - `internal/domain/entities`, `internal/infrastructure/config`,
     `internal/presentation/dto`, `internal/presentation/middleware`: 100%
-  - `internal/presentation/handlers`: 97.6%
-  - `internal/infrastructure/db`: 81.8% (Mongo repository, transactional
-    outbox writes, all status transitions, idempotency)
-  - `internal/application/usecases`: 78.3%
-  - `internal/infrastructure/messaging`: 68.6% (publish/consume roundtrip,
-    retry -> DLQ after `MaxRetries`, outbox dispatcher)
-  - `cmd/server`, `cmd/worker`: 0% (main() wiring only, not unit tested)
+  - `internal/presentation/handlers`: 97,6%
+  - `internal/infrastructure/db`: 81,8% (repositório Mongo, escritas
+    transacionais na outbox, todas as transições de status, idempotência)
+  - `internal/application/usecases`: 78,3%
+  - `internal/infrastructure/messaging`: 68,6% (roundtrip de publish/consume,
+    retry -> DLQ após `MaxRetries`, dispatcher da outbox)
+  - `cmd/server`, `cmd/worker`: 0% (apenas wiring do main(), sem teste
+    unitário)
 
-## Saga participation
+## Participação na saga
 
-- **Consumes**: `StartExecutionCommand` (`os_id`, `budget_id`) -- creates an
-  execution in `DIAGNOSING` status.
-- **Produces**:
+- **Consome**: `StartExecutionCommand` (`os_id`, `budget_id`) -- cria uma
+  execução em status `DIAGNOSING`.
+- **Produz**:
   - `ExecutionStarted` (`os_id`, `started_at`, `technician_id`)
   - `ExecutionCompleted` (`os_id`, `completed_at`, `repair_notes`)
   - `ExecutionFailed` (`os_id`, `reason`)
 
-Status transitions `DIAGNOSING -> REPAIRING -> {COMPLETED, FAILED}` (and
-`DIAGNOSING -> FAILED`) are driven via `PATCH /api/v1/executions/:os_id`.
-The `REPAIRING` transition is internal to this service and not in the event
-catalog, so no event is emitted for it -- only `repair_history` is updated.
+As transições de status `DIAGNOSING -> REPAIRING -> {COMPLETED, FAILED}` (e
+`DIAGNOSING -> FAILED`) são feitas via `PATCH /api/v1/executions/:os_id`. A
+transição `REPAIRING` é interna a este serviço e não faz parte do catálogo
+de eventos, então nenhum evento é emitido para ela -- apenas o
+`repair_history` é atualizado.
 
-See `docs/adr/0001-orchestrated-saga.md` for why the saga is orchestrated
-rather than choreographed, and `docs/openapi.yaml` for the full REST
-contract.
+Veja `docs/adr/0001-orchestrated-saga.md` para entender por que a saga é
+orquestrada em vez de coreografada, e `docs/openapi.yaml` para o contrato
+REST completo.
